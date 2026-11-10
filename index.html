@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="it"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Mia TV</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,sans-serif;background:#111;color:#eee}
+#login,#app{padding:16px;max-width:700px;margin:auto}
+input,select,button{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:0;font-size:16px}
+button{background:#e50914;color:#fff;font-weight:600}
+video{width:100%;background:#000;border-radius:10px;position:sticky;top:0}
+.ch{padding:12px;border-bottom:1px solid #222;display:flex;gap:10px;align-items:center}
+.ch img{width:36px;height:36px;object-fit:contain}
+#err{color:#f66}
+</style></head><body>
+<div id="login">
+ <h2>Mia TV</h2>
+ <input id="srv" placeholder="Server (https://...)" value="https://ebz98ef58z.liveday.live">
+ <input id="usr" placeholder="Username" autocapitalize="none">
+ <input id="pwd" placeholder="Password" type="password">
+ <button onclick="go()">Entra</button><div id="err"></div>
+</div>
+<div id="app" hidden>
+ <video id="v" controls playsinline autoplay></video>
+ <select id="cat" onchange="show()"></select>
+ <input id="q" placeholder="Cerca canale" oninput="show()">
+ <div id="list"></div>
+ <button onclick="localStorage.clear();location.reload()">Esci</button>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
+<script>
+let S,U,P,cats=[],chs=[],hls;
+const $=id=>document.getElementById(id);
+const api=a=>fetch(`${S}/player_api.php?username=${U}&password=${P}&action=${a}`).then(r=>r.json());
+async function go(){
+ S=$('srv').value.trim().replace(/\/$/,'');U=$('usr').value.trim();P=$('pwd').value;
+ try{
+  cats=await api('get_live_categories');chs=await api('get_live_streams');
+  localStorage.setItem('c',JSON.stringify({S,U,P}));
+  $('login').hidden=true;$('app').hidden=false;
+  $('cat').innerHTML='<option value="">Tutte le categorie</option>'+cats.map(c=>`<option value="${c.category_id}">${c.category_name}</option>`).join('');
+  show();
+ }catch(e){$('err').textContent='Errore: '+e.message+' (credenziali errate o server che blocca il browser)'}
+}
+function show(){
+ const c=$('cat').value,q=$('q').value.toLowerCase();
+ $('list').innerHTML=chs.filter(x=>(!c||x.category_id==c)&&x.name.toLowerCase().includes(q)).slice(0,200)
+ .map(x=>`<div class="ch" onclick="play(${x.stream_id})"><img src="${x.stream_icon||''}" onerror="this.style.display='none'">${x.name}</div>`).join('');
+}
+function play(id){
+     const u=`${S}/live/${U}/${P}/${id}.m3u8`,v=$('v');
+ if(hls)hls.destroy();
+ if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=u}
+ else if(Hls.isSupported()){hls=new Hls();hls.loadSource(u);hls.attachMedia(v)}
+ v.play();
+}
+const sv=localStorage.getItem('c');
+if(sv){const o=JSON.parse(sv);$('srv').value=o.S;$('usr').value=o.U;$('pwd').value=o.P;go()}
+</script></body></html>
