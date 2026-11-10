@@ -12,49 +12,66 @@ button{background:#e50914;color:#fff;font-weight:600}
 video{width:100%;background:#000;border-radius:10px;position:sticky;top:0}
 .ch{padding:12px;border-bottom:1px solid #222;display:flex;gap:10px;align-items:center}
 .ch img{width:36px;height:36px;object-fit:contain}
-#err{color:#f66}
+#st{margin-top:10px;color:#ffd166;word-break:break-word}
 </style></head><body>
 <div id="login">
  <h2>Mia TV</h2>
  <input id="srv" placeholder="Server (https://...)" value="https://ebz98ef58z.liveday.live">
- <input id="usr" placeholder="Username" autocapitalize="none">
+ <input id="usr" placeholder="Username" autocapitalize="none" autocorrect="off">
  <input id="pwd" placeholder="Password" type="password">
- <button onclick="go()">Entra</button><div id="err"></div>
+ <button id="btn">Entra</button>
+ <div id="st">Pronto. Inserisci username e password.</div>
 </div>
 <div id="app" hidden>
  <video id="v" controls playsinline autoplay></video>
- <select id="cat" onchange="show()"></select>
- <input id="q" placeholder="Cerca canale" oninput="show()">
+ <select id="cat"></select>
+ <input id="q" placeholder="Cerca canale">
  <div id="list"></div>
- <button onclick="localStorage.clear();location.reload()">Esci</button>
+ <button id="out">Esci</button>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.13/hls.min.js"></script>
 <script>
-let S,U,P,cats=[],chs=[],hls;
-const $=id=>document.getElementById(id);
-const api=a=>fetch(`${S}/player_api.php?username=${U}&password=${P}&action=${a}`).then(r=>r.json());
+var S,U,P,cats=[],chs=[],hls;
+function $(id){return document.getElementById(id)}
+function st(t){$('st').textContent=t}
+window.onerror=function(m,s,l){st('Errore script: '+m+' (riga '+l+')')};
+function api(a){
+ var c=new AbortController();var t=setTimeout(function(){c.abort()},30000);
+ var u=S+'/player_api.php?username='+encodeURIComponent(U)+'&password='+encodeURIComponent(P)+(a?'&action='+a:'');
+ return fetch(u,{signal:c.signal}).then(function(r){clearTimeout(t);return r.text()}).then(function(x){
+  try{return JSON.parse(x)}catch(e){throw new Error('Risposta non valida: '+x.slice(0,80))}});
+}
 async function go(){
  S=$('srv').value.trim().replace(/\/$/,'');U=$('usr').value.trim();P=$('pwd').value;
+ if(!U||!P){st('Scrivi username e password');return}
  try{
+  st('Connessione al server...');
+  var info=await api('');
+  if(!info.user_info||info.user_info.auth==0){st('Credenziali non valide o server diverso da Xtream');return}
+  st('Login ok. Caricamento canali (puo richiedere un po)...');
   cats=await api('get_live_categories');chs=await api('get_live_streams');
-  localStorage.setItem('c',JSON.stringify({S,U,P}));
+  try{localStorage.setItem('c',JSON.stringify({S:S,U:U,P:P}))}catch(e){}
   $('login').hidden=true;$('app').hidden=false;
-  $('cat').innerHTML='<option value="">Tutte le categorie</option>'+cats.map(c=>`<option value="${c.category_id}">${c.category_name}</option>`).join('');
+  $('cat').innerHTML='<option value="">Tutte le categorie</option>'+cats.map(function(c){return '<option value="'+c.category_id+'">'+c.category_name+'</option>'}).join('');
   show();
- }catch(e){$('err').textContent='Errore: '+e.message+' (credenziali errate o server che blocca il browser)'}
+ }catch(e){st('Errore: '+e.message+(e.name=='AbortError'?' (tempo scaduto)':'')+' - probabile blocco del server verso il browser')}
 }
 function show(){
- const c=$('cat').value,q=$('q').value.toLowerCase();
- $('list').innerHTML=chs.filter(x=>(!c||x.category_id==c)&&x.name.toLowerCase().includes(q)).slice(0,200)
- .map(x=>`<div class="ch" onclick="play(${x.stream_id})"><img src="${x.stream_icon||''}" onerror="this.style.display='none'">${x.name}</div>`).join('');
+ var c=$('cat').value,q=$('q').value.toLowerCase();
+ $('list').innerHTML=chs.filter(function(x){return (!c||x.category_id==c)&&x.name.toLowerCase().indexOf(q)>-1}).slice(0,200)
+ .map(function(x){return '<div class="ch" data-id="'+x.stream_id+'"><img src="'+(x.stream_icon||'')+'" onerror="this.style.display=\'none\'">'+x.name+'</div>'}).join('');
 }
 function play(id){
-     const u=`${S}/live/${U}/${P}/${id}.m3u8`,v=$('v');
+ var u=S+'/live/'+U+'/'+P+'/'+id+'.m3u8',v=$('v');
  if(hls)hls.destroy();
  if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=u}
- else if(Hls.isSupported()){hls=new Hls();hls.loadSource(u);hls.attachMedia(v)}
+ else if(window.Hls&&Hls.isSupported()){hls=new Hls();hls.loadSource(u);hls.attachMedia(v)}
  v.play();
 }
-const sv=localStorage.getItem('c');
-if(sv){const o=JSON.parse(sv);$('srv').value=o.S;$('usr').value=o.U;$('pwd').value=o.P;go()}
+$('btn').addEventListener('click',go);
+$('cat').addEventListener('change',show);
+$('q').addEventListener('input',show);
+$('out').addEventListener('click',function(){try{localStorage.clear()}catch(e){}location.reload()});
+$('list').addEventListener('click',function(e){var d=e.target.closest('.ch');if(d)play(d.getAttribute('data-id'))});
+try{var sv=localStorage.getItem('c');if(sv){var o=JSON.parse(sv);$('srv').value=o.S;$('usr').value=o.U;$('pwd').value=o.P;go()}}catch(e){}
 </script></body></html>
